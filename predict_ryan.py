@@ -96,18 +96,32 @@ def main():
         if not opts.no_target and target is not None:
             save_tiff_and_log('target', target.numpy()[0, ], path_tiff_dir, entry, opts.path_save_dir)
 
-        for path_model_dir in opts.path_model_dir:
-            if (path_model_dir is not None) and (model is None or len(opts.path_model_dir) > 1):
-                model = fnet.load_model(path_model_dir, opts.gpu_ids, module=opts.module_fnet_model)
-                print(model)
-                name_model = os.path.basename(path_model_dir)
-            prediction = model.predict(signal) if model is not None else None
-            if not opts.no_prediction and prediction is not None:
-                save_tiff_and_log('prediction_{:s}'.format(name_model), prediction.numpy()[0, ], path_tiff_dir, entry, opts.path_save_dir)
-            if not opts.no_prediction_unpropped:
-                ar_pred_unpropped = propper.undo_last(prediction.numpy()[0, 0, ])
-                save_tiff_and_log('prediction_{:s}_unpropped'.format(name_model), ar_pred_unpropped, path_tiff_dir, entry, opts.path_save_dir)
+        img_p = np.zeros((1024,1024), dtype=np.float32)
+        for i in range(1,11):
+            checkpoint_path = os.path.join('saved_models/RT_DAPI_Lamin', 'checkpoints')
+            model_path = os.path.join(checkpoint_path, '{:06d}'.format(i * 10000))
+            model = fnet.load_model(model_path,opts.gpu_ids,module=opts.module_fnet_model)
+            if model is None:
+                print('bad model')
+                exit(0)
+            prediction = model.predict(signal)
+            img_p += prediction.numpy()[0,0,]
+        img_p /= 10
+        name_model = 'something'
         entries.append(entry)
+        save_tiff_and_log('prediction_{:s}'.format(name_model), img_p, path_tiff_dir, entry, opts.path_save_dir)
+        #for path_model_dir in opts.path_model_dir:
+        #    if (path_model_dir is not None) and (model is None or len(opts.path_model_dir) > 1):
+        #        model = fnet.load_model(path_model_dir, opts.gpu_ids, module=opts.module_fnet_model)
+        #        print(model)
+        #        name_model = os.path.basename(path_model_dir)
+        #    prediction = model.predict(signal) if model is not None else None
+        #    if not opts.no_prediction and prediction is not None:
+        #        save_tiff_and_log('prediction_{:s}'.format(name_model), prediction.numpy()[0, ], path_tiff_dir, entry, opts.path_save_dir)
+        #    if not opts.no_prediction_unpropped:
+        #        ar_pred_unpropped = propper.undo_last(prediction.numpy()[0, 0, ])
+        #        save_tiff_and_log('prediction_{:s}_unpropped'.format(name_model), ar_pred_unpropped, path_tiff_dir, entry, opts.path_save_dir)
+        #entries.append(entry)
         
     with open(os.path.join(opts.path_save_dir, 'predict_options.json'), 'w') as fo:
         json.dump(vars(opts), fo, indent=4, sort_keys=True)

@@ -1,0 +1,121 @@
+import io
+import sys
+import renderapi
+import numpy as np
+import requests
+from PIL import Image
+import math
+import random
+
+class RenderAdaptor(object):
+    def __init__(self, host = 'http://10.128.24.33', port = 80, 
+                 owner = 'Forrest', project = 'M247514_Rorb_1',
+                 source = 'REG_MARCH_21_DAPI_1', 
+                 target = 'REG_MARCH_21_DAPI_3', 
+                 img_format = 'tif', m = 6, n = 3, 
+                 patch_length = 1024, patches_per_slice = 1):
+        self.host = host 
+        self.port = port 
+        self.owner = owner
+        self.project = project
+        self.source = source 
+        self.target = target 
+        self.img_format = img_format
+        self.m = m 
+        self.n = n 
+        self.patch_length = patch_length
+        self.patches_per_slice = patches_per_slice
+        self.render = renderapi.render.Render(self.host, self.port, 
+                                              self.owner, self.project)
+        self.samples = []
+        self._sample()
+
+    #Finds box that inscribes mxn tilespec 
+    #Returns minX[M-1], minY[N-1], maxX[M-1], maxY[N-1]
+    def _find_bounds(self, tilespecs):
+        minX = []
+        maxX = []
+        maxY = []
+        minY = []  
+        for tile in tilespecs:
+            corners = np.array([[0,0], [tile.width,0], 
+                               [tile.width,tile.height], [0,tile.height]])
+            transformed_corners = renderapi.transform.estimate_dstpts(tile.tforms, corners)
+            minX.append(transformed_corners[0][0])
+            maxX.append(transformed_corners[1][0])
+            maxY.append(transformed_corners[2][1])
+            minY.append(transformed_corners[0][1]) 
+        minX.sort()
+        maxX.sort(reverse=True)
+        maxY.sort(reverse=True)
+        minY.sort()
+        return minX[self.m-1], maxX[self.m-1], maxY[self.n-1], minY[self.n-1]
+
+    #Finds parameters by which to translate maxX and minY due to a specific mask pattern
+    #Returns translation of width and height
+    def _apply_mask(self, request_url):
+        r = requests.Session().get(request_url)
+        mask = Image.open(io.BytesIO(r.content))
+        array = np.asarray(mask)
+        height = 0
+        width = 0 
+        for x in reversed(range(array.shape[1])):
+            if array[array.shape[0]-1][x][0] == 255:
+                width = array.shape[1] - x - 1
+                break
+        for y in range(array.shape[0]):
+            if array[y][0][0] == 255:
+                height = y
+                break
+        return width, height
+
+    #Selects coordinates in source and target stacks to sample patches
+    #Returns list of coordinates by z-value [(z, minX, minY)]
+    def _sample(self):
+        #Find common bounds for each slice
+        zvalues = renderapi.stack.get_z_values_for_stack(self.source, 
+                                                         render = self.render)
+        for z in zvalues:
+            #Find source bounds
+            tilespecs = renderapi.tilespec.get_tile_specs_from_z(self.source, z, render = self.render) 
+            minXi,maxXi,maxYi,minYi = self._find_bounds(tilespecs) 
+            #Find target bounds
+            tilespecs = renderapi.tilespec.get_tile_specs_from_z(self.target, z, render = self.render) 
+            minXf,maxXf,maxYf,minYf = self._find_bounds(tilespecs) 
+            #Translate bounds by mask
+            request_url = renderapi.render.format_preamble(self.host, self.port, self.owner, self.project, self.target) + \
+                           '/tile/{}/mask/png-image'.format(tilespecs[0].tileId)
+            w, h = self._apply_mask(request_url)
+            #Find most restrictive bounds
+            minX = max(minXi,minXf) 
+            maxX = min(maxXi,maxXf) - w
+            minY = max(minYi,minYf) + h 
+            maxY = min(maxYi,maxYf)
+            #Sample patches from a slice
+            for i in range(self.patches_per_slice):
+                x = random.randint(math.ceil(minX), math.floor(maxX) - self.patch_length)
+                y = random.randint(math.ceil(minY), math.floor(maxY) - self.patch_length)
+                self.samples.append((z, x, y))
+
+    #Renders patch of source and target at index in list of sample coordinates 
+    #Returns list of source and target patches as numpy arrays
+    def get_item(self, index):
+        z = self.samples[index][0]
+        x = self.samples[index][1]
+        y = self.samples[index][2]
+        source = renderapi.image.get_bb_image(self.source, z, x, y, 
+                                              self.patch_length,
+                                              self.patch_length, 
+                                              img_format = self.img_format,
+                                              render = self.render)
+        target = renderapi.image.get_bb_image(self.target, z, x, y, 
+                                              self.patch_length,
+                                              self.patch_length, 
+                                              img_format = self.img_format,
+                                              render = self.render) 
+        #return [np.reshape(source, (3,1024,1024)), np.reshape(target, (3,1024,1024))]
+        return [np.ones(1,1024,1024), np.ones(1,1024,1024)]
+
+    #Returns length of list of sample coordinates
+    def get_len(self): 
+        return len(self.samples)

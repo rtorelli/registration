@@ -1,0 +1,5 @@
+path_signal,path_target
+/pipeline/ryan/src_z88_0.tif,/pipeline/ryan/dst_z88_0.tif
+/pipeline/ryan/src_z88_1.tif,/pipeline/ryan/dst_z88_1.tif
+/pipeline/ryan/src_z88_2.tif,/pipeline/ryan/dst_z88_2.tif
+
