@@ -75,7 +75,7 @@ def main():
 
     if os.path.exists(opts.path_save_dir):
         print('Output path already exists.')
-       # return
+        return
     if opts.class_dataset == 'TiffDataset':
         if opts.propper_kwargs.get('action') == '-':
             opts.propper_kwargs['n_max_pixels'] = 6000000
