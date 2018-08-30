@@ -9,6 +9,7 @@ import os
 import renderapi
 import numpy as np
 import pandas as pd
+import json
 
 def normalize(img):
     result = img.astype(np.float64)
@@ -116,7 +117,10 @@ def main():
                                  project=opts.project,
                                  client_scripts=opts.client_scripts)
     renderapi.client.import_tilespecs(opts.output_stack, tsarray, render=r)
-    renderapi.stack.set_stack_state(opts.output_stack, 'COMPLETE',render=r)            
+    renderapi.stack.set_stack_state(opts.output_stack, 'COMPLETE',render=r)
+            
+    with open(os.path.join(path_output_stack, 'predict_options.json'), 'w') as outfile:
+        json.dump(vars(opts), outfile, indent=4, sort_keys=True)
 
 if __name__ == '__main__':
     main()
